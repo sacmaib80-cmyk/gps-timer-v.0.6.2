@@ -983,6 +983,15 @@
     45% { transform: rotate(180deg) scale(1.08); }
     100% { transform: rotate(360deg) scale(1); }
   }
+  /* Fix Dice FAB position — Mobile only */
+@media (max-width: 768px){
+
+  .diceFab{
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+}
 
 
     </style>
