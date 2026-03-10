@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SakuraQ v0.7.4</title>
+    <title>SakuraQ v0.7.5</title>
 
     <style>
       :root{
@@ -2416,7 +2416,7 @@ linear-gradient(
           <div class="brandMeta">
             <div class="brandTitleRow">
               <h1>SakuraQ</h1>
-              <span class="versionBadge">v0.7.4</span>
+              <span class="versionBadge">v0.7.5</span>
             </div>
             <div class="sub" id="todayText">Today: ----</div>
           </div>
@@ -4607,9 +4607,24 @@ function rqTickUI(){
   const locked = rqIsCooldown();
   const selected = rqGetSelected();
 
-  // ถ้ามี quest ค้างอยู่ -> เปิดดูได้เสมอ
-  if(selected){
+  // ✅ ถ้ากำลังทำเควสอยู่ ห้ามกดลูกเต๋า
+  if(state.status === "running" || state.status === "paused"){
+    el.diceBtn.disabled = true;
+    el.diceBtn.classList.remove("dicePulse");
 
+    el.diceCd.classList.add("show");
+    el.diceCd.innerHTML = `กำลังทำเควสอยู่`;
+
+    if(el.rqPickLow)  el.rqPickLow.disabled  = true;
+    if(el.rqPickMid)  el.rqPickMid.disabled  = true;
+    if(el.rqPickHigh) el.rqPickHigh.disabled = true;
+
+    rqRenderSelectedToModal();
+    return;
+  }
+
+  // ถ้ามี quest ค้างอยู่ -> เปิดดูได้ แม้ติด cooldown
+  if(selected){
     el.diceBtn.disabled = false;
     el.diceBtn.classList.add("dicePulse");
 
@@ -4628,19 +4643,14 @@ function rqTickUI(){
 
   // ไม่มี quest ค้าง
   if(locked){
-
     el.diceCd.classList.add("show");
     el.diceCd.innerHTML = `Cooldown: <b>${rqCooldownLeft()}</b>`;
-
     el.diceBtn.classList.remove("dicePulse");
     el.diceBtn.disabled = true;
-
   }else{
-
     el.diceCd.classList.remove("show");
     el.diceBtn.classList.add("dicePulse");
     el.diceBtn.disabled = false;
-
   }
 
   if(el.rqPickLow)  el.rqPickLow.disabled  = locked;
@@ -4709,6 +4719,16 @@ function rqStartNow(){
 
   if(state.status === "running"){
     rqMarkDone(q.id);
+    rqClearSelected();
+    rqTickUI();
+
+    switchPage("appPage");
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToId("sec-timer");
+      });
+    });
   }
 }
   /* =========================
@@ -5582,6 +5602,11 @@ document.addEventListener("visibilitychange", ()=>{
   }
 }
 
+function updateDiceVisibility(){
+  if(!el.diceFab) return;
+  el.diceFab.style.display = "flex";
+  rqShowIfEligible();
+}
 function switchPage(pageId){
   document.querySelectorAll(".page").forEach(page=>{
     page.classList.remove("page-active");
@@ -5597,31 +5622,36 @@ function switchPage(pageId){
   if(pageId === "homeScene"){
     requestAnimationFrame(() => {
       renderHomeHud();
+      updateDiceVisibility();
     });
+  }else{
+    updateDiceVisibility();
   }
 }
   /* ===== Random Quest events ===== */
 on(el.diceBtn, "click", ()=>{
-  console.log("DICE CLICKED");
-  const selected = rqGetSelected?.();
-  console.log("selected =", selected);
-  console.log("disabled =", el.diceBtn?.disabled);
+  // ถ้ากำลังทำเควสอยู่ ไม่ให้เปิด dice
+  if(state.status === "running" || state.status === "paused"){
+    showTimerWarn("กำลังทำเควสอยู่");
+    return;
+  }
 
+  const selected = rqGetSelected();
+
+  // ถ้ามีเควสเดิมค้างอยู่ เปิดดูได้เลย
   if(selected){
-    console.log("OPEN EXISTING MODAL");
     rqOpenModal();
-    rqRenderSelectedToModal?.();
+    rqRenderSelectedToModal();
     return;
   }
 
-  if(rqIsCooldown?.()){
-    console.log("COOLDOWN BLOCK");
-    rqTickUI?.();
-    showTimerWarn?.("ติด cooldown");
+  // ไม่มีเควสเดิม ค่อยเช็ค cooldown
+  if(rqIsCooldown()){
+    rqTickUI();
+    showTimerWarn("ติด cooldown");
     return;
   }
 
-  console.log("OPEN EMPTY MODAL");
   rqOpenModal();
 });
   on(el.rqClose, "click", rqCloseModal);
@@ -5821,6 +5851,8 @@ document.querySelectorAll(".bottomNavBtn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     const pageId = btn.dataset.page;
     const target = btn.dataset.target;
+
+
 
     switchPage(pageId);
 
