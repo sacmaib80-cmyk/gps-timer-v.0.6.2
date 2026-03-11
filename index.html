@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SakuraQ v0.7.7</title>
+    <title>SakuraQ v0.7.8</title>
 
     <style>
       :root{
@@ -2712,7 +2712,7 @@ linear-gradient(
           <div class="brandMeta">
             <div class="brandTitleRow">
               <h1>SakuraQ</h1>
-              <span class="versionBadge">v0.7.7</span>
+              <span class="versionBadge">v0.7.8</span>
             </div>
             <div class="sub" id="todayText">Today: ----</div>
           </div>
@@ -4399,6 +4399,14 @@ const SQ_DICE_RULES = {
   physicalCooldownDays: 3
 };
 
+  const SQ_WORK_FLOW = [
+  "วางแผน Focus",
+  "ลงมือทำ Focus",
+  "แก้/ปรับ Focus",
+  "Focus 1 อย่าง",
+  "สรุปบทเรียน Focus"
+];
+
 const SQ_DICE_GEN = {
   durations: {
     low:  [10, 15, 20],
@@ -4406,8 +4414,10 @@ const SQ_DICE_GEN = {
     high: [45, 50, 55, 60],
   },
 
+
+
   physical: {
-    cardio: ["เดิน", "วิ่งเบา", "mobility", "ยืดเหยียด", "คาร์ดิโอเบา"],
+    cardio: ["เดิน", "วิ่งเบา" , "ยืดเหยียด", "คาร์ดิโอเบา"],
     bodypart: ["อก", "หลัง", "ไหล่", "แขน", "ขา", "ท้อง"]
   },
 
@@ -4424,7 +4434,7 @@ const SQ_DICE_GEN = {
     "ลงมือทำ Focus",
     "แก้/ปรับ Focus",
     "วางแผน Focus",
-    "ship Focus 1 อย่าง",
+    "Focus 1 อย่าง",
     "สรุปบทเรียน Focus"
   ],
 
@@ -4466,7 +4476,7 @@ const SQ_DICE_GEN = {
       { category:"Work/Project", name:"Work • ลงมือทำ", tail:"Focus" },
     ],
     high: [
-      { category:"Work/Project", name:"Work • Ship 1 อย่าง", tail:"Focus" },
+      { category:"Work/Project", name:"Work • 1 อย่าง", tail:"Focus" },
       { category:"Physical", name:"Physical • หลัง", tail:"" },
       { category:"Learning", name:"Learning • ทำชุด", tail:"สรุปจุดพลาด 3 ข้อ" },
     ]
@@ -4557,6 +4567,142 @@ function rqGetDomainsFromHistory(category, lookbackDays = SQ_DICE_RULES.lookback
   return sorted.map(x => x.dom);
 }
 
+function rqGetRecentDomains(category, days = 2){
+  const data = loadAll();
+  const today = localDateKey();
+  const arr = [];
+
+  for(let i=1;i<=days;i++){
+    const dk = addDays(today, -i);
+    const day = data[dk];
+    if(!day?.quests) continue;
+
+    const quests = [...day.quests].sort((a,b)=> Number(b.ts || 0) - Number(a.ts || 0));
+
+    for(const q of quests){
+      if(q.category !== category) continue;
+      const dom = rqExtractDomainFromQuestName(q.questName);
+      if(dom) arr.push(dom.toLowerCase().trim());
+    }
+  }
+
+  return arr;
+}
+
+function rqGetLastWorkActionForDomain(domain, lookbackDays = SQ_DICE_RULES.lookbackDays){
+  const data = loadAll();
+  const today = localDateKey();
+  const target = String(domain || "").toLowerCase().trim();
+
+  for(let i=0;i<lookbackDays;i++){
+    const dk = addDays(today, -i);
+    const day = data[dk];
+    if(!day?.quests) continue;
+
+    const quests = [...day.quests].sort((a,b)=> Number(b.ts || 0) - Number(a.ts || 0));
+
+    for(const q of quests){
+      if(q.category !== "Work/Project") continue;
+
+      const dom = rqExtractDomainFromQuestName(q.questName).toLowerCase().trim();
+      if(dom !== target) continue;
+
+      const fullName = normQuestName(q.questName);
+      for(const act of SQ_WORK_FLOW){
+        if(fullName.includes(act)) return act;
+      }
+    }
+  }
+
+  return "";
+}
+function rqPickProgressedWorkAction(domain){
+  const last = rqGetLastWorkActionForDomain(domain);
+
+  if(!last) return rqPickOne([
+    "วางแผน Focus",
+    "ลงมือทำ Focus"
+  ]);
+
+  const idx = SQ_WORK_FLOW.indexOf(last);
+
+  if(idx === -1){
+    return rqPickOne(SQ_WORK_FLOW);
+  }
+
+  const next = SQ_WORK_FLOW[idx + 1];
+
+  // ถ้าถึงท้ายแล้ว ให้หมุนได้ระหว่าง  / สรุป / ลงมือทำ
+  if(!next){
+    return rqPickOne([
+      "ลงมือทำ Focus",
+      "Focus 1 อย่าง",
+      "สรุปบทเรียน Focus"
+    ]);
+  }
+
+  // ถ่วงน้ำหนัก: action ถัดไปเด่นสุด แต่ยังสุ่มเบี่ยงได้บ้าง
+  const pool = [
+    next, next, next,
+    last,
+    ...(SQ_WORK_FLOW.filter(a => a !== next && a !== last))
+  ];
+
+  return rqPickOne(pool);
+}
+function rqPickTopDomain(domains){
+  if(!Array.isArray(domains) || !domains.length) return "";
+
+  const top = domains.slice(0, 3);
+  const weights = top.map((_, i) => {
+    if(i === 0) return 60;
+    if(i === 1) return 28;
+    return 12;
+  });
+
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+
+  for(let i=0; i<top.length; i++){
+    r -= weights[i];
+    if(r <= 0) return top[i];
+  }
+
+  return top[0];
+}
+
+function rqPickTopDomainAntiStreak(domains, category){
+  if(!Array.isArray(domains) || !domains.length) return "";
+
+  const top = domains.slice(0, 3);
+  const recent = rqGetRecentDomains(category, 2);
+
+  const weighted = top.map((dom, i) => {
+    let weight = (i === 0) ? 60 : (i === 1) ? 28 : 12;
+
+    const key = dom.toLowerCase().trim();
+    const hits = recent.filter(x => x === key).length;
+
+    if(hits >= 2) weight *= 0.18;
+    else if(hits === 1) weight *= 0.45;
+
+    return { value: dom, weight };
+  });
+
+  const valid = weighted.filter(x => x.weight > 0);
+  if(!valid.length) return top[0];
+
+  const total = valid.reduce((a,b)=> a + b.weight, 0);
+  let r = Math.random() * total;
+
+  for(const item of valid){
+    r -= item.weight;
+    if(r <= 0) return item.value;
+  }
+
+  return valid[0].value;
+}
+
 /* ---------- 7d stats ---------- */
 function rqBuild7dStats(){
   const data = loadAll();
@@ -4576,6 +4722,17 @@ function rqBuild7dStats(){
     }
   }
   return stat;
+}
+function rqGetForcedCategoryByDeficit(){
+  const stats7 = rqBuild7dStats();
+
+  const workCount = stats7["Work/Project"]?.count || 0;
+  const learningCount = stats7["Learning"]?.count || 0;
+
+  if(workCount === 0) return "Work/Project";
+  if(learningCount === 0) return "Learning";
+
+  return "";
 }
 function rqBuildRecentCategoryStats(days = 2){
   const data = loadAll();
@@ -4656,6 +4813,11 @@ function rqChooseCategorySmart(energy){
   const allowed = rqGetAllowedCategories(energy);
   if(!allowed.length) return null;
 
+  const forced = rqGetForcedCategoryByDeficit();
+if(forced && allowed.includes(forced)){
+  return forced;
+}
+
   const stats7 = rqBuild7dStats();
   const recent = rqBuildRecentCategoryStats(2);
   const maxMin = Math.max(...allowed.map(c => stats7[c]?.minutes || 0), 1);
@@ -4691,7 +4853,7 @@ function rqChooseCategorySmart(energy){
 function rqBuildLearningQuest(energy){
   const duration = rqPickDuration(energy);
   const domains = rqGetDomainsFromHistory("Learning");
-  const domain = domains[0] || "Learning";
+const domain = rqPickTopDomainAntiStreak(domains, "Learning") || "Learning";
   const type = rqClassifyLearningType(domain);
   const act = rqPickOne(SQ_DICE_GEN.learningActivities[type] || SQ_DICE_GEN.learningActivities.generic);
 
@@ -4706,10 +4868,10 @@ function rqBuildLearningQuest(energy){
 }
 function rqBuildWorkQuest(energy){
   const duration = rqPickDuration(energy);
-  const domains = rqGetDomainsFromHistory("Work/Project");
-  const domain = domains[0] || "Work";
-  const action = rqPickOne(SQ_DICE_GEN.workActions);
-  const name = `${domain} • ${action}`;
+const domains = rqGetDomainsFromHistory("Work/Project");
+const domain = rqPickTopDomainAntiStreak(domains, "Work/Project") || "Work";
+const action = rqPickProgressedWorkAction(domain);
+const name = `${domain} • ${action}`;
 
   return {
     id: rqHash(`Work/Project|${name}|${duration}`),
