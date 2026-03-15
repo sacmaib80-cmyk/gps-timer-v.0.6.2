@@ -6553,32 +6553,24 @@ function shouldUseSystemNotification(){
   return true
 }
 
-function sendQuestDoneNotification(){
-  if(notified) return
-  if(!shouldUseSystemNotification()) return
+async function sendQuestDoneNotification(){
+  if(notified) return;
+  if(!shouldUseSystemNotification()) return;
+  if(!("serviceWorker" in navigator)) return;
 
   try{
-    const n = new Notification(buildNotificationTitle(), {
+    const reg = await navigator.serviceWorker.ready;
+
+    await reg.showNotification(buildNotificationTitle(), {
       body: buildNotificationBody(),
-      icon: "icon-192.png", // ถ้ายังไม่มี icon ก็ปล่อยไว้ก่อนได้
+      icon: "icon-192.png",
       tag: "sakuraq-quest-done",
       renotify: false
-    })
+    });
 
-    n.onclick = () => {
-      window.focus()
-      try{
-        switchPage("appPage")
-        scrollToId("sec-report")
-      }catch(err){
-        console.warn("Cannot jump to report:", err)
-      }
-      n.close()
-    }
-
-    notified = true
+    notified = true;
   }catch(err){
-    console.error("Notification send error:", err)
+    console.error("SW notification send error:", err);
   }
 }
 
@@ -6615,10 +6607,22 @@ function resetNotificationFlags(){
   notified = false
   smartWarnSent = false
 }
+async function registerSW(){
+  if(!("serviceWorker" in navigator)) return;
+
+  try{
+    await navigator.serviceWorker.register("./sw.js");
+    console.log("SW registered");
+  }catch(err){
+    console.error("SW register failed:", err);
+  }
+}
   /* =========================
     BOOT
   ========================= */
   function boot(){
+registerSW();
+
     loadState();
     loadGateCfg();
     loadGate();
